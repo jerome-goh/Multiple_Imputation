@@ -1,0 +1,448 @@
+---
+title: "Final Project RFS"
+author: "Jerome Goh"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## General Plan
+
+
+> Re-factor qualitative variables, namely:
+- Drive System Code
+- Tested Transmission Type
+- Fuel Type Cd
+- Test Procedure Cd
+
+> Tackle FE measured by MPG
+
+FE DOES DEPEND ON THE TYPE OF TESTING. GAS EMISSIONS ALSO DIFFER BASED ON TYPE OF TESTING
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+First install the following packages...
+
+### EDA
+
+```{r echo=FALSE, warning = FALSE}
+ 
+library(readxl) # to parse Excel files
+
+mydata <- read_excel("proj_data.xlsx")
+# attach(car_test)
+
+# Remove redundant columns, like identifiers
+
+car_test <- mydata[, !names(mydata) %in% c("Test Vehicle ID", "Actual Tested Testgroup", "Test Veh Configuration #", "Engine Code", "Shift Indicator Light Use Cd", "Shift Indicator Light Use Desc", "Test Number", "ADFE Test Number", "Tested Transmission Type Code", "Transmission Overdrive Code", "Veh Mfr Code", "Model Year", "Represented Test Veh Make", "Averaging Group ID", "Averaging Group ID", "Averaging Weighting Factor", "Averaging Method Cd", "Averaging Method Desc","ADFE Total Road Load HP", "ADFE Equiv. Test Weight (lbs.)", "ADFE N/V Ratio", "Drive System Code", "Test Procedure Cd", "Police - Emergency Vehicle?", "ADFE", "Analytically Derived FE?", "FE Bag 1", "FE Bag 2", "FE Bag 4", "FE Bag 3")]
+
+
+colnames(car_test) <- make.names(colnames(car_test), unique = TRUE)
+
+# Rename column names for easier calling
+names(car_test)[names(car_test) == "Test.Fuel.Type.Description"] <- "fuel.type"
+names(car_test)[names(car_test) == "Transmission.Lockup."] <- "trans.lockup"
+names(car_test)[names(car_test) == "Transmission.Overdrive.Desc"] <- "trans.overdrive"
+names(car_test)[names(car_test) == "Test.Procedure.Description"] <- "test.procedure"
+names(car_test)[names(car_test) == "Test.Category"] <- "test.category"
+names(car_test)[names(car_test) == "Tested.Transmission.Type"] <- "trans"
+names(car_test)[names(car_test) == "Drive.System.Description"] <- "drive.sys"
+names(car_test)[names(car_test) == "Aftertreatment.Device.Desc"] <- "aftertreatment"
+
+names(car_test)[names(car_test) == "THC..g.mi."] <- "THC"
+names(car_test)[names(car_test) == "NOx..g.mi."] <- "NOx"
+names(car_test)[names(car_test) == "CO..g.mi."] <- "CO"
+names(car_test)[names(car_test) ==  "CO2..g.mi."] <- "CO2"
+names(car_test)[names(car_test) == "PM..g.mi."] <- "PM"
+names(car_test)[names(car_test) == "CH4..g.mi."] <- "CH4"
+names(car_test)[names(car_test) == "N2O..g.mi."] <- "N2O"
+
+print(colnames(car_test))
+
+# Factoring our categorical variables
+factors <- c("fuel.type", "test.procedure", "test.category", "trans", "drive.sys", "trans.lockup", 
+             "trans.overdrive","aftertreatment","Vehicle.Type")
+car_test[factors] <- lapply(car_test[factors], factor)
+
+levels(car_test$fuel.type)
+```
+
+Since EVs do not produce emissions, we set their emissions from N/A to 0
+```{r}
+# Set gas = 0 for EV
+car_test$THC <- ifelse(is.na(car_test$THC) & car_test$fuel.type == "Electricity", 0, car_test$THC)
+car_test$CO <- ifelse(is.na(car_test$CO) & car_test$fuel.type == "Electricity", 0, car_test$CO)
+car_test$CO2 <- ifelse(is.na(car_test$CO2) & car_test$fuel.type == "Electricity" , 0, car_test$CO2)
+car_test$NOx <- ifelse(is.na(car_test$NOx) & car_test$fuel.type == "Electricity" , 0, car_test$NOx)
+car_test$PM <- ifelse(is.na(car_test$PM) & car_test$fuel.type == "Electricity" , 0, car_test$PM)
+car_test$CH4 <- ifelse(is.na(car_test$CH4) & car_test$fuel.type == "Electricity" , 0, car_test$CH4)
+car_test$N2O <- ifelse(is.na(car_test$N2O) & car_test$fuel.type == "Electricity", 0, car_test$N2O)
+
+
+EV <- car_test[car_test$fuel.type=="Electricity", ] # check if gas variables set
+
+# Set gas = 0 for HF
+car_test$THC <- ifelse(is.na(car_test$THC) & car_test$fuel.type == "Hydrogen 5", 0, car_test$THC)
+car_test$CO <- ifelse(is.na(car_test$CO) & car_test$fuel.type == "Hydrogen 5", 0, car_test$CO)
+car_test$CO2 <- ifelse(is.na(car_test$CO2) & car_test$fuel.type == "Hydrogen 5" , 0, car_test$CO2)
+car_test$NOx <- ifelse(is.na(car_test$NOx) & car_test$fuel.type == "Hydrogen 5" , 0, car_test$NOx)
+car_test$PM <- ifelse(is.na(car_test$PM) & car_test$fuel.type == "Hydrogen 5" , 0, car_test$PM)
+car_test$CH4 <- ifelse(is.na(car_test$CH4) & car_test$fuel.type == "Hydrogen 5" , 0, car_test$CH4)
+car_test$N2O <- ifelse(is.na(car_test$N2O) & car_test$fuel.type == "Hydrogen 5", 0, car_test$N2O)
+
+HF <- car_test[car_test$fuel.type=="Hydrogen 5", ] # check if gas variables set
+
+```
+
+For ease of analysis, we first partition into numeric and categorical variables.
+Then visualize the missingness separately.
+```{r}
+
+library(dplyr)
+
+car_test <- car_test %>% filter (!is.na(car_test$Vehicle.Manufacturer.Name))
+
+# Split numeric and categorical components
+numeric.car_test <- car_test %>% select_if(is.numeric)
+
+numeric_variables <- sapply(car_test, is.numeric)
+cat.car_test <- car_test[!numeric_variables]
+
+
+# Install package "finalfit"
+
+library(finalfit) # library for identifying and handling missing data
+numeric.car_test %>%
+    missing_plot() # Visualize the scope of missingness of numeric
+# Among the gases, N20 and CH4 are weird, though PM is justified
+# PM may be MNAR
+
+cat.car_test %>%
+    missing_plot() # Scope of missingness of categorical
+
+table(car_test$Aftertreatment.Device.Cd)
+table(car_test$aftertreatment)
+
+```
+
+Analysis of Fuel Economy
+
+```{r}
+
+# Inspect response variable
+hist(numeric.car_test$RND_ADJ_FE)
+summary(numeric.car_test$RND_ADJ_FE)
+
+# There is an observation of 10,000 MPG. Let's isolate it
+out <- car_test[car_test$RND_ADJ_FE > 50, ]
+print(out)
+
+
+car_test <- car_test[car_test$RND_ADJ_FE < 200, ] 
+# the observations with FE > 200, being high consumption gas cars, does not make sense.
+
+```
+Missingness, grouped by fuel type CD
+
+ - 19: Federal Cert Diesel 7-15 PPM Sulfur
+ - 26: Cold CO Regular (Tier 2)
+ - 27: Cold CO Premium (Tier 2)
+ - 38: E85 (85% Ethanol 15% EPA Unleaded Gasoline)
+ - 39: Tier 3 E10 Regular Gasoline (9 RVP @Low Alt.)
+ - 50: Hydrogen 5 *(non-gas)*
+ - 61: Tier 2 Cert Gasoline
+ - 62: Electricity *(non-gas)*
+ 
+> For Test Fuel Type CD == 62, set gas values to 0
+
+Missingness between fuel type and gas
+```{r}
+library(naniar) # another missingdata viz library
+
+# Dataframe with fuel type code and each gas emission variable
+fuel_gas <- data.frame(car_test$fuel.type, car_test$CO, car_test$CO2, car_test$THC, car_test$N2O, car_test$CH4, car_test$NOx, car_test$PM)
+colnames(fuel_gas)[1] <- "fuel.type" #rename fuel type
+fg.mat <- fuel_gas %>% group_by(fuel.type) %>% miss_var_summary() #matrix of missing gases, grouped by fuel type
+
+table(fuel_gas$fuel.type) # about 81.9% are Tier 2 Gas
+
+```
+We want an impression of what cars utilize fuel types besides Type 2 Gas
+
+```{r}
+coldco_veh <- car_test %>%
+    filter(fuel.type %in% c("Cold CO Premium (Tier 2)","Cold CO Regular (Tier 2)"))
+
+```
+
+```{r}
+vis_miss(fuel_gas, cluster = TRUE) # Pattern might be because of EV. We set equal 0 for EV.
+vis_miss(fuel_gas, sort_miss = TRUE) # in descending order
+vis_miss(car_test, sort_miss = TRUE)
+
+
+gg_miss_var(fuel_gas, facet = fuel.type) # Proportionally, 26, 61 (Tier 2 Gas) and finally 62 (EV) have most missing, grouped by fuel type
+```
+```{r}
+gg_miss_var(car_test) #overall proportionality of missing numeric variables
+```
+
+```{r}
+PM.NA <- subset(car_test, !is.na(car_test$PM))
+table(PM.NA$fuel.type) # speculate that PM is MAR
+
+n2o.NA <- subset(car_test, is.na(car_test$N2O))
+table(n2o.NA$fuel.type)
+
+miss_var_summary(car_test)
+```
+
+> Address missing values, based on the three types of missing data
+- Missing completely at random (MCAR)
+- Missing at random (MAR)
+- Missing not at random (MNAR)
+
+In this last part of data cleaning, we make the decision to drop the 'FE Bags' due to the lack of patterns to their missingness, thus they are MCAR.
+
+We also remove EVs and HF vehicles as they do not contribute to emissions.
+
+```{r}
+car_test <- car_test[, !names(car_test) %in% c("FE.Bag.4","FE.Bag.3","FE.Bag.2","FE.Bag.1")]
+
+car_test_filter <- car_test[car_test$fuel.type != "Electricity", ]
+car_test_filter <- car_test_filter[car_test_filter$fuel.type != "Hydrogen 5", ]
+levels(car_test_filter$fuel.type)
+
+
+car_test_filter$fuel.type <- droplevels(car_test_filter$fuel.type) #drop unused factor levels, ie electricity and hydrogen
+levels(car_test_filter$fuel.type)
+
+vis_miss(car_test_filter, cluster = TRUE)
+# from the above visual, let's delete all observations missing vehicle
+
+car_test_filter <- car_test_filter[complete.cases(car_test_filter$Vehicle.Manufacturer.Name), ]
+
+vis_miss(car_test_filter, cluster = TRUE)
+```
+
+PM, CH4 and N2O form a major common cluster of missingness.
+
+For multiple imputation models the goal is to use as much information as you have in order to obtain the estimates required to complete any missing data, on the condition that the missing data is 'missing at random', meaning that the missingness is related to the observed data. With this approach, rather than replacing missing values with a single value, we use the distribution of the observed data/variables to estimate multiple possible values for the data points. This allows us to account for the uncertainty around the true value, and obtain approximately unbiased estimates (under certain conditions). 
+
+The quickpred, under mice(), function allows us to view which variables will be used as the prior for imputing the missing values, for a particular row in the matrix. 
+
+By modifying this matrix, we can determine what relevant 'information' goes into the imputation.
+
+However, because we do not know the causes of missingness, we can best go about screening the prior information by correlation.
+
+The mice() library also automatically selects, on an iteratively univariate basis, the method of imputation
+
+```{r}
+var.sel <- quickpred(car_test_filter, mincor = 0.4, minpuc = 0.5)
+```
+
+
+```{r}
+# mcar_test(fuel_gas) # reject H0 i.e. p-value<alpha implies data is not MCAR, thus MAR. There is relation - is observed/missing
+
+library(mice)
+
+imp.data <- mice(data = car_test_filter, predictorMatrix = var.sel, m=5, maxit=10, seed = 123, print = FALSE)
+meth <- imp.data$method
+print(meth)
+
+imp.datasets <- complete(imp.data, "long") 
+# mice detects multicollinearity. Try quickpred() on car_test_filter
+```
+
+
+```{r}
+# Check convergence, ie. all plots are erratic
+plot(imp.data)
+```
+
+```{r}
+# Extend number of iterations
+imp.more <- mice.mids(imp.data, maxit = 30, print = F)
+plot(imp.more)
+```
+
+
+
+
+
+
+## MISC SECTION, EXPERIMENTAL
+
+```{r}
+library(corrplot)
+corrplot(cor.mat.imp1, method = 'circle')
+```
+
+```{r}
+# We want to sample from imputations, 5 datasets, randomly
+
+# Extract each imputed dataset, split into numeric, then run PCA
+
+cartest_imp1 <- complete(imp.data, 5)
+
+
+cartest_imp1 <- na.omit(cartest_imp1)
+miss_var_summary(cartest_imp1) # Check missingness. No missing!
+
+vis_miss(cartest_imp1)
+```
+```{r}
+library(GGally)
+ggcorr(numeric.cartest_imp1, method = c("everything", "pearson")) 
+```
+
+```{r}
+
+# Repeat for next 4 datasets
+
+cartest_imp2 <- complete(imp.data, 19)
+
+
+
+cartest_imp3 <- complete(imp.data, 14)
+
+
+
+cartest_imp4 <- complete(imp.data, 3)
+
+
+
+cartest_imp5 <- complete(imp.data, 10)
+
+
+
+
+# Split categorical and numerical. Then check correlation of each. Focus on GHG
+numeric.cartest_imp1 <- cartest_imp1 %>% select_if(is.numeric)
+cor.mat.imp1 <- cor(numeric.cartest_imp1)
+
+numeric.cartest_imp2 <- cartest_imp2 %>% select_if(is.numeric)
+cor.mat.imp2 <- cor(numeric.cartest_imp2)
+
+numeric.cartest_imp3 <- cartest_imp3 %>% select_if(is.numeric)
+cor.mat.imp3 <- cor(numeric.cartest_imp3)
+
+numeric.cartest_imp4 <- cartest_imp4 %>% select_if(is.numeric)
+cor.mat.imp4 <- cor(numeric.cartest_imp4)
+
+numeric.cartest_imp5 <- cartest_imp5 %>% select_if(is.numeric)
+cor.mat.imp5 <- cor(numeric.cartest_imp5)
+
+# GHG positively correlated with
+# - num of gears - HP - Cylinder and Rotor - test weight
+
+# GHG negatively correlated with
+# - DT Energy Economy Rating - DT Inertia Work Ratio - Axle Ratio - Veh Displacement
+
+# Correlation matrix of original
+cor.mat.og <- cor(numeric.car_test)
+
+```
+
+```{r}
+cor.mat.imp <- cor(numeric.cartest_imp1)
+```
+
+
+CO2 as response, horsepower as predictor
+Here we do regression with imputation, vs. vanilla regression (with case deletion)
+
+First we look at the pooled case
+```{r}
+# reg.fit.mi <- with(imp.data, lm(CO2 ~ X..of.Gears + X..of.Cylinders.and.Rotors + Rated.Horsepower + fuel.type + drive.sys))
+
+reg.fit.mi <- with(imp.data, lm(CO2 ~ Test.Veh.Displacement..L. + Rated.Horsepower + X..of.Gears + Equivalent.Test.Weight..lbs.. + X..of.Cylinders.and.Rotors + Axle.Ratio + fuel.type))
+
+pool.fit <- pool(reg.fit.mi)
+summary(pool.fit)
+
+
+
+```
+```{r}
+pool.r2 <- pool.r.squared(reg.fit.mi)
+pool.r2
+
+# Component est is the pooled R^2 estimate. Component lo95 is the 95 % lower bound of the pooled R^2. Component hi95 is the 95 % upper bound of the pooled R^2. Component fmi is the fraction of missing information due to nonresponse
+```
+
+Now we look at complete, original case with casewise deletion
+```{r}
+library(car)
+
+# Complete Case
+m1 <- lm(data=car_test, CO2 ~ X..of.Gears + X..of.Cylinders.and.Rotors + Rated.Horsepower + fuel.type + drive.sys)
+summary(m1)
+print(vif(m1))
+```
+
+```{r}
+hist(cartest_imp1$CO2)
+hist(car_test$CO2)
+```
+
+
+
+Now we look at each sampled case
+
+```{r}
+#imp1
+
+m.imp4 <- lm(data=cartest_imp4, CO2 ~ X..of.Gears + X..of.Cylinders.and.Rotors + Rated.Horsepower + fuel.type + drive.sys)
+summary(m.imp4)
+print(vif(m.imp4))
+```
+
+```{r}
+
+
+m.imp_1 <- lm(data=cartest_imp1, GHG ~ Test.Veh.Displacement..L. + Rated.Horsepower + X..of.Gears + Equivalent.Test.Weight..lbs.. + X..of.Cylinders.and.Rotors + Axle.Ratio + fuel.type)
+
+
+summary(cartest_imp1$GHG)
+summary(m.imp_1)
+print(vif(m.imp_1))
+
+library(lmtest)
+bptest(m.imp_1) # there is heteroscedasticity. Box-cox transform cannot work due to negative value present
+
+```
+
+
+
+
+Original
+```{r}
+m1 <- lm(data=car_test, CO2 ~ X..of.Gears + X..of.Cylinders.and.Rotors + Rated.Horsepower + fuel.type + drive.sys + Vehicle.Type)
+summary(m1)
+print(vif(m1))
+
+
+residualPlots(m1, ~1, type="rstudent", id=list(labels=row.names(m1)))
+hist(residuals(m1))
+qqnorm(residuals(m1))
+qqline(residuals(m1))
+influencePlot(m1, id=list(labels=row.names(m1)))
+```
+
+
+Diagnostics (kinda)
+
+
+
+```{r}
+
+residualPlots(m.imp_try, ~1, type="rstudent", id=list(labels=row.names(cartest_imp4)))
+hist(residuals(m.imp_try))
+qqnorm(residuals(m.imp_try))
+qqline(residuals(m.imp_try))
+influencePlot(m.imp_try, id=list(labels=row.names(cartest_imp4)))
+```
+

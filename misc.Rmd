@@ -1,0 +1,156 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+## MISC SECTION, EXPERIMENTAL. 
+```{r}
+library(corrplot)
+corrplot(cor.mat.imp1, method = 'circle')
+```
+
+
+
+```{r}
+# We want to sample from imputations, 5 datasets, randomly
+
+# Extract each imputed dataset, split into numeric, then run PCA
+
+cartest_imp1 <- complete(imp.data, 5)
+
+
+cartest_imp1 <- na.omit(cartest_imp1)
+miss_var_summary(cartest_imp1) # Check missingness. No missing!
+
+vis_miss(cartest_imp1)
+```
+```{r}
+library(GGally)
+ggcorr(numeric.cartest_imp1, method = c("everything", "pearson")) 
+```
+
+```{r}
+
+# Repeat for next 4 datasets
+
+cartest_imp2 <- complete(imp.data, 19)
+
+cartest_imp3 <- complete(imp.data, 14)
+
+cartest_imp4 <- complete(imp.data, 3)
+
+cartest_imp5 <- complete(imp.data, 10)
+
+# Split categorical and numerical. Then check correlation of each. Focus on GHG
+numeric.cartest_imp1 <- cartest_imp1 %>% select_if(is.numeric)
+cor.mat.imp1 <- cor(numeric.cartest_imp1)
+
+numeric.cartest_imp2 <- cartest_imp2 %>% select_if(is.numeric)
+cor.mat.imp2 <- cor(numeric.cartest_imp2)
+
+numeric.cartest_imp3 <- cartest_imp3 %>% select_if(is.numeric)
+cor.mat.imp3 <- cor(numeric.cartest_imp3)
+
+numeric.cartest_imp4 <- cartest_imp4 %>% select_if(is.numeric)
+cor.mat.imp4 <- cor(numeric.cartest_imp4)
+
+numeric.cartest_imp5 <- cartest_imp5 %>% select_if(is.numeric)
+cor.mat.imp5 <- cor(numeric.cartest_imp5)
+
+# GHG positively correlated with
+# - num of gears - HP - Cylinder and Rotor - test weight
+
+# GHG negatively correlated with
+# - DT Energy Economy Rating - DT Inertia Work Ratio - Axle Ratio - Veh Displacement
+
+# Correlation matrix of original
+cor.mat.og <- cor(numeric.car_test)
+
+```
+
+```{r}
+cor.mat.imp <- cor(numeric.cartest_imp1)
+```
+
+CO2 as response, horsepower as predictor
+Here we do regression with imputation, vs. vanilla regression (with case deletion)
+
+First we look at the pooled case
+```{r}
+# reg.fit.mi <- with(imp.data, lm(CO2 ~ X..of.Gears + X..of.Cylinders.and.Rotors + Rated.Horsepower + fuel.type + drive.sys))
+
+reg.fit.mi <- with(imp.data, lm(CO2 ~ Test.Veh.Displacement..L. + Rated.Horsepower + X..of.Gears + Equivalent.Test.Weight..lbs.. + X..of.Cylinders.and.Rotors + Axle.Ratio + fuel.type))
+
+pool.fit <- pool(reg.fit.mi)
+summary(pool.fit)
+```
+
+```{r}
+pool.r2 <- pool.r.squared(reg.fit.mi)
+pool.r2
+
+# Component est is the pooled R^2 estimate. Component lo95 is the 95 % lower bound of the pooled R^2. Component hi95 is the 95 % upper bound of the pooled R^2. Component fmi is the fraction of missing information due to nonresponse
+```
+
+Now we look at complete, original case with casewise deletion
+```{r}
+library(car)
+
+# Complete Case
+m1 <- lm(data=car_test, CO2 ~ X..of.Gears + X..of.Cylinders.and.Rotors + Rated.Horsepower + fuel.type + drive.sys)
+summary(m1)
+print(vif(m1))
+```
+
+```{r}
+hist(cartest_imp1$CO2)
+hist(car_test$CO2)
+```
+
+Now we look at each sampled case
+
+```{r}
+#imp1
+
+m.imp4 <- lm(data=cartest_imp4, CO2 ~ X..of.Gears + X..of.Cylinders.and.Rotors + Rated.Horsepower + fuel.type + drive.sys)
+summary(m.imp4)
+print(vif(m.imp4))
+```
+
+```{r}
+m.imp_1 <- lm(data=cartest_imp1, GHG ~ Test.Veh.Displacement..L. + Rated.Horsepower + X..of.Gears + Equivalent.Test.Weight..lbs.. + X..of.Cylinders.and.Rotors + Axle.Ratio + fuel.type)
+
+summary(cartest_imp1$GHG)
+summary(m.imp_1)
+print(vif(m.imp_1))
+
+library(lmtest)
+bptest(m.imp_1) # there is heteroscedasticity. Box-cox transform cannot work due to negative value present
+```
+
+Original
+```{r}
+m1 <- lm(data=car_test, CO2 ~ X..of.Gears + X..of.Cylinders.and.Rotors + Rated.Horsepower + fuel.type + drive.sys + Vehicle.Type)
+summary(m1)
+print(vif(m1))
+
+
+residualPlots(m1, ~1, type="rstudent", id=list(labels=row.names(m1)))
+hist(residuals(m1))
+qqnorm(residuals(m1))
+qqline(residuals(m1))
+influencePlot(m1, id=list(labels=row.names(m1)))
+```
+
+
+Diagnostics (kinda)
+
+```{r}
+
+residualPlots(m.imp_try, ~1, type="rstudent", id=list(labels=row.names(cartest_imp4)))
+hist(residuals(m.imp_try))
+qqnorm(residuals(m.imp_try))
+qqline(residuals(m.imp_try))
+influencePlot(m.imp_try, id=list(labels=row.names(cartest_imp4)))
+```
