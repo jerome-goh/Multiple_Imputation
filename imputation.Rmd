@@ -2,7 +2,7 @@
 title: "Final Project RFS"
 author: "Jerome Goh"
 date: "`r Sys.Date()`"
-output: github_document
+output: html_document
 ---
 
 ## Data Cleaning Plan
@@ -25,9 +25,9 @@ First install the following packages...
 
 OR
 
-Load workspace image titled "impute.RData"
+Load workspace image titled "impute.RData", to view all generated variables in global environment
 
-### Data Cleaning
+## Data Cleaning
 
 ```{r echo=FALSE, warning = FALSE}
  
@@ -68,7 +68,7 @@ factors <- c("fuel.type", "test.procedure", "test.category", "trans", "drive.sys
              "trans.overdrive","aftertreatment","Vehicle.Type")
 car_test[factors] <- lapply(car_test[factors], factor)
 
-levels(car_test$fuel.type)
+# levels(car_test$fuel.type)
 ```
 
 Since EVs do not produce emissions, we set their emissions from N/A to 0
@@ -124,7 +124,7 @@ table(car_test$Aftertreatment.Device.Cd)
 table(car_test$aftertreatment)
 ```
 
-## (Misc.) Analysis of Fuel Economy
+### (Misc.) Analysis of Fuel Economy
 
 ```{r}
 # Inspect response variable
@@ -133,7 +133,7 @@ summary(numeric.car_test$RND_ADJ_FE)
 
 # There is an observation of 10,000 MPG. Let's isolate it
 out <- car_test[car_test$RND_ADJ_FE > 50, ]
-print(out)
+
 
 car_test <- car_test[car_test$RND_ADJ_FE < 200, ] 
 # the observations with FE > 200, being high consumption gas cars, does not make sense.
@@ -313,6 +313,7 @@ ave <- imp.more %>%
 
 head(ave)
 ```
+
 ```{r}
 cor <- ave %>%
     cor() %>%
@@ -323,7 +324,7 @@ cor.co2 <- cor[,"CO2"] %>%
     sort(decreasing = T)
 
 cor.co2.df <- data.frame(values = cor.co2)
-cor.co2.df
+head(cor.co2.df)
 ```
 Here we can select the numerical variables most correlated (coefficient of at least 0.4) to CO2 for use in our model.
 
@@ -331,7 +332,7 @@ Now we make a list of all our categorical variables, select numerics and apply s
 
 Given the large number of predictors, stepwise regression takes considerable time to run
 
-```{r}
+```{r, include=FALSE}
 scope <- list(upper = ~ Rated.Horsepower + Test.Veh.Displacement..L. + X..of.Cylinders.and.Rotors + NOx + Equivalent.Test.Weight..lbs.. + CH4 + Target.Coef.A..lbf. + CO + X..of.Gears + Represented.Test.Veh.Model + Vehicle.Type + trans + trans.lockup + drive.sys + trans.overdrive + fuel.type + aftertreatment,
               lower = ~1)
 expr <- expression (f1 <- lm(CO2 ~ 1),
@@ -390,14 +391,17 @@ fit.without.tl <- with(imp.more, lm(CO2 ~ CH4 + Equivalent.Test.Weight..lbs.. + 
 
 D1(fit.with.tl, fit.without.tl)
 ```
+Similarly, we drop "Transmission Lockup" from the model.
 
-Fit the linear model (w/. test veh model) [complicated model]
+## Multiple Regression Model
+
+Fit the linear model (w/. test veh model) [complicated model, multinomial nature of "test veh model"]
 
 ```{r}
 fit1.lm <- with(imp.more, lm(CO2 ~ CH4 + Equivalent.Test.Weight..lbs.. + CO + fuel.type + X..of.Cylinders.and.Rotors + NOx + Target.Coef.A..lbf. + X..of.Gears + drive.sys + Represented.Test.Veh.Model))
 
 est1.lm <- pool(fit1.lm)
-summary(est1.lm)
+# summary(est1.lm)
 ```
 
 Fit linear model (w/o. test veh model)
@@ -405,7 +409,7 @@ Fit linear model (w/o. test veh model)
 fit1.lm.wo <- with(imp.more, lm(CO2 ~ CH4 + Equivalent.Test.Weight..lbs.. + CO + fuel.type + X..of.Cylinders.and.Rotors + NOx + Target.Coef.A..lbf. + X..of.Gears + drive.sys))
 
 est1.lm.wo <- pool(fit1.lm.wo)
-summary(est1.lm.wo)
+# summary(est1.lm.wo)
 ```
 
 Compare R-squared
