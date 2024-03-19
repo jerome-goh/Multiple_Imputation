@@ -2,7 +2,7 @@
 title: "Final Project RFS"
 author: "Jerome Goh"
 date: "`r Sys.Date()`"
-output: rmarkdown::github_document
+output: github_document
 ---
 
 ## Data Cleaning Plan
