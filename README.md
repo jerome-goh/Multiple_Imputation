@@ -6,4 +6,4 @@ When dealing with missing values, a knee-jerk reaction would be to delete missin
 
 This project focuses on identifying and understanding how missing variables are "similarly missing" and exploring the correlation between the parameters with missing values and parameters with non-missing values, such that the most suitable prior information can be used for the imputation model
 
-Click [here](https://jerome-goh.github.io/Multiple_Imputation/imputation.html) for the rendered output
+Click [here](https://jerome-goh.github.io/Multiple_Imputation_R/imputation.html) for the rendered output
